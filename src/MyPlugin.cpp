@@ -39,17 +39,15 @@ public:
             return QJsonObject{{"error", "没有找到 .dat 文件"}};
         }
 
-        // 对每个文件的信号进行低通滤波
-        QJsonArray dataArray;
         int totalFiltered = 0;
-
         for (const auto& file : files) {
             if (!file.valid || file.samples.isEmpty()) continue;
-
-            QVector<double> filtered = butterworthLowpass(file.samples, cutoffFreq, 100000.0, order);
+            QVector<double> filtered = butterworthLowpass(
+                file.samples, cutoffFreq, 100000.0, order);
             totalFiltered += filtered.size();
         }
 
+        QJsonArray dataArray;
         dataArray.append(QJsonObject{{"name", "处理文件数"}, {"value", files.size()}});
         dataArray.append(QJsonObject{{"name", "滤波采样点"}, {"value", totalFiltered}});
         dataArray.append(QJsonObject{{"name", "截止频率 (Hz)"}, {"value", cutoffFreq}});
@@ -59,27 +57,18 @@ public:
     }
 
 private:
-    // Butterworth 低通滤波器（二阶节级联实现）
     QVector<double> butterworthLowpass(const QVector<double>& input,
                                        double cutoffFreq, double sampleRate, int order)
     {
         QVector<double> output = input;
-
-        // 归一化截止频率
         double wc = tan(M_PI * cutoffFreq / sampleRate);
-
-        // 二阶节系数（Butterworth）
-        int numSections = order / 2;
-        if (order % 2 != 0) numSections++; // 奇数阶多一个一阶节
+        int numSections = (order + 1) / 2;
 
         for (int s = 0; s < numSections; ++s) {
-            double angle = M_PI * (2 * s + order) / (2 * order);
-            double alpha = -2.0 * cos(angle);
-
+            double angle = M_PI * (2 * s + order) / (2.0 * order);
             double b0, b1, b2, a0, a1, a2;
 
             if (s == numSections - 1 && order % 2 != 0) {
-                // 一阶节（奇数阶时最后一个）
                 double k = wc;
                 b0 = k / (1.0 + k);
                 b1 = b0;
@@ -87,7 +76,6 @@ private:
                 a1 = (k - 1.0) / (1.0 + k);
                 a2 = 0;
             } else {
-                // 二阶节
                 double k = wc * wc;
                 double d = 1.0 + 2.0 * cos(angle) * wc + k;
                 b0 = k / d;
@@ -98,17 +86,15 @@ private:
                 a2 = (1.0 - 2.0 * cos(angle) * wc + k) / d;
             }
 
-            // 应用滤波（直接形式 I）
             double x1 = 0, x2 = 0, y1 = 0, y2 = 0;
             for (int i = 0; i < output.size(); ++i) {
                 double x0 = output[i];
-                double y0 = b0 * x0 + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+                double y0 = b0*x0 + b1*x1 + b2*x2 - a1*y1 - a2*y2;
                 x2 = x1; x1 = x0;
                 y2 = y1; y1 = y0;
                 output[i] = y0;
             }
         }
-
         return output;
     }
 };
@@ -117,4 +103,4 @@ DAQ_PLUGIN_EXPORT IDaqPlugin* createPlugin() {
     return new LowPassFilter();
 }
 
-#include "LowPassFilter.moc"
+#include "MyPlugin.moc"
