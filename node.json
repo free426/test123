@@ -1,18 +1,24 @@
 {
-    "id": "my_plugin",
-    "name": "我的插件",
-    "category": "信号分析",
-    "description": "插件功能描述",
+    "id": "lowpass_filter",
+    "name": "低通滤波器",
+    "category": "信号处理",
+    "description": "对信号进行低通滤波，去除高频噪声",
     "type": "cpp",
     "inputs": [],
     "outputs": [],
-    "displayType": "chart",
+    "displayType": "data",
     "parameters": [
         {
-            "name": "threshold",
+            "name": "cutoffFreq",
             "type": "float",
-            "default": 0.8,
-            "description": "阈值 (mV)"
+            "default": 1000.0,
+            "description": "截止频率 (Hz)"
+        },
+        {
+            "name": "order",
+            "type": "int",
+            "default": 4,
+            "description": "滤波器阶数"
         }
     ]
 }
