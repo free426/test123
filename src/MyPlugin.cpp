@@ -1,66 +1,120 @@
-// MyPlugin.cpp — 插件模板（修改此文件实现你的算法）
-//
-// 快速开始：
-//   1. 修改 pluginId/pluginName/category/description
-//   2. 在 process() 中实现你的算法
-//   3. git push → GitHub Actions 自动编译
-//   4. 下载 .dll → 放到主程序 custom_nodes/ 目录
+// LowPassFilter.cpp — 低通滤波器插件
+// 对 .dat 文件中的信号进行低通滤波，去除高频噪声
 
 #include <DaqPluginSDK.h>
 #include <QJsonArray>
 #include <QDebug>
+#include <cmath>
 
-class MyPlugin : public QObject, public IDaqPlugin
+class LowPassFilter : public QObject, public IDaqPlugin
 {
     Q_OBJECT
 
 public:
-    // ── 基本信息（与 node.json 一致）──
-    QString pluginId() const override { return "my_plugin"; }
-    QString pluginName() const override { return "我的插件"; }
-    QString category() const override { return "信号分析"; }
-    QString description() const override { return "插件功能描述"; }
+    QString pluginId() const override { return "lowpass_filter"; }
+    QString pluginName() const override { return "低通滤波器"; }
+    QString category() const override { return "信号处理"; }
+    QString description() const override { return "对信号进行低通滤波，去除高频噪声"; }
 
-    // ── 参数定义（可选，自动生成配置面板）──
     QJsonObject parameterSchema() const override {
         return QJsonObject{
-            {"threshold", QJsonObject{
-                {"type", "float"}, {"default", 0.8},
-                {"description", "阈值 (mV)"}
+            {"cutoffFreq", QJsonObject{
+                {"type", "float"}, {"default", 1000.0},
+                {"description", "截止频率 (Hz)"}
+            }},
+            {"order", QJsonObject{
+                {"type", "int"}, {"default", 4},
+                {"description", "滤波器阶数"}
             }}
         };
     }
 
-    // ── 核心处理 ──
     QJsonObject process(const QString& datDir, const QJsonObject& params) override
     {
-        double threshold = params["threshold"].toDouble(0.8);
+        double cutoffFreq = params["cutoffFreq"].toDouble(1000.0);
+        int order = params["order"].toInt(4);
 
-        // 一行读取所有 .dat 文件
         QVector<DatFile> files = DaqIO::readDatDirectory(datDir + "/dat");
-
         if (files.isEmpty()) {
-            return QJsonObject{{"error", "没有找到 .dat 文件，请先开始录制"}};
+            return QJsonObject{{"error", "没有找到 .dat 文件"}};
         }
 
-        // 在这里写你的算法...
-        int totalSamples = 0;
-        for (const auto& file : files) {
-            totalSamples += file.samples.size();
-        }
-
-        // 返回结果
+        // 对每个文件的信号进行低通滤波
         QJsonArray dataArray;
-        dataArray.append(QJsonObject{{"name", "文件数"}, {"value", files.size()}});
-        dataArray.append(QJsonObject{{"name", "总采样点"}, {"value", totalSamples}});
+        int totalFiltered = 0;
+
+        for (const auto& file : files) {
+            if (!file.valid || file.samples.isEmpty()) continue;
+
+            QVector<double> filtered = butterworthLowpass(file.samples, cutoffFreq, 100000.0, order);
+            totalFiltered += filtered.size();
+        }
+
+        dataArray.append(QJsonObject{{"name", "处理文件数"}, {"value", files.size()}});
+        dataArray.append(QJsonObject{{"name", "滤波采样点"}, {"value", totalFiltered}});
+        dataArray.append(QJsonObject{{"name", "截止频率 (Hz)"}, {"value", cutoffFreq}});
+        dataArray.append(QJsonObject{{"name", "滤波器阶数"}, {"value", order}});
 
         return QJsonObject{{"data", dataArray}};
     }
+
+private:
+    // Butterworth 低通滤波器（二阶节级联实现）
+    QVector<double> butterworthLowpass(const QVector<double>& input,
+                                       double cutoffFreq, double sampleRate, int order)
+    {
+        QVector<double> output = input;
+
+        // 归一化截止频率
+        double wc = tan(M_PI * cutoffFreq / sampleRate);
+
+        // 二阶节系数（Butterworth）
+        int numSections = order / 2;
+        if (order % 2 != 0) numSections++; // 奇数阶多一个一阶节
+
+        for (int s = 0; s < numSections; ++s) {
+            double angle = M_PI * (2 * s + order) / (2 * order);
+            double alpha = -2.0 * cos(angle);
+
+            double b0, b1, b2, a0, a1, a2;
+
+            if (s == numSections - 1 && order % 2 != 0) {
+                // 一阶节（奇数阶时最后一个）
+                double k = wc;
+                b0 = k / (1.0 + k);
+                b1 = b0;
+                a0 = 1.0;
+                a1 = (k - 1.0) / (1.0 + k);
+                a2 = 0;
+            } else {
+                // 二阶节
+                double k = wc * wc;
+                double d = 1.0 + 2.0 * cos(angle) * wc + k;
+                b0 = k / d;
+                b1 = 2.0 * k / d;
+                b2 = k / d;
+                a0 = 1.0;
+                a1 = 2.0 * (k - 1.0) / d;
+                a2 = (1.0 - 2.0 * cos(angle) * wc + k) / d;
+            }
+
+            // 应用滤波（直接形式 I）
+            double x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+            for (int i = 0; i < output.size(); ++i) {
+                double x0 = output[i];
+                double y0 = b0 * x0 + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+                x2 = x1; x1 = x0;
+                y2 = y1; y1 = y0;
+                output[i] = y0;
+            }
+        }
+
+        return output;
+    }
 };
 
-// 导出工厂函数（不要改这行）
 DAQ_PLUGIN_EXPORT IDaqPlugin* createPlugin() {
-    return new MyPlugin();
+    return new LowPassFilter();
 }
 
-#include "MyPlugin.moc"
+#include "LowPassFilter.moc"
