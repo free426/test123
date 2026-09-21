@@ -6,7 +6,7 @@
     "type": "cpp",
     "inputs": [],
     "outputs": [],
-    "displayType": "data",
+    "displayType": "chart",
     "parameters": [
         {
             "name": "cutoffFreq",
