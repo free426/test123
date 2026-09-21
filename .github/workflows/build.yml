@@ -1,0 +1,67 @@
+name: Build Plugin
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.5.0'
+          arch: 'win64_mingw'
+
+      - name: Download SDK
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/free426/InsightDAQ-SDK/releases/download/sdk-v1.0.0/daq-plugin-sdk-v1.0.0.zip" -OutFile "sdk.zip"
+          Expand-Archive -Path "sdk.zip" -DestinationPath "sdk" -Force
+
+      - name: Configure
+        run: cmake -B build -G "MinGW Makefiles" -DDAQ_SDK_DIR=${{ github.workspace }}/sdk
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-windows
+          path: |
+            build/*.dll
+            node.json
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.5.0'
+
+      - name: Download SDK
+        run: |
+          curl -L -o sdk.zip https://github.com/free426/InsightDAQ-SDK/releases/download/sdk-v1.0.0/daq-plugin-sdk-v1.0.0.zip
+          unzip sdk.zip -d sdk
+
+      - name: Configure
+        run: cmake -B build -DDAQ_SDK_DIR=${{ github.workspace }}/sdk
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-linux
+          path: |
+            build/*.so
+            node.json

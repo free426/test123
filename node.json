@@ -1,0 +1,18 @@
+{
+    "id": "my_plugin",
+    "name": "我的插件",
+    "category": "信号分析",
+    "description": "插件功能描述",
+    "type": "cpp",
+    "inputs": [],
+    "outputs": [],
+    "displayType": "chart",
+    "parameters": [
+        {
+            "name": "threshold",
+            "type": "float",
+            "default": 0.8,
+            "description": "阈值 (mV)"
+        }
+    ]
+}
